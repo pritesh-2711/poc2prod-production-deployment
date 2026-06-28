@@ -1,0 +1,103 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  body {
+    background-color: #0C0E14;
+    color: #F1F5FB;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #2A2F45;
+    border-radius: 2px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #3D4560;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .glass {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .text-gradient {
+    background: linear-gradient(135deg, #818CF8, #5B6EF5);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .animate-typing-dots::after {
+    content: '';
+    animation: typing-dots 1.4s steps(4, end) infinite;
+  }
+}
+
+@keyframes typing-dots {
+  0%   { content: ''; }
+  25%  { content: '.'; }
+  50%  { content: '..'; }
+  75%  { content: '...'; }
+  100% { content: ''; }
+}
+
+/* Message content prose */
+.message-content p { margin-bottom: 0.5rem; }
+.message-content p:last-child { margin-bottom: 0; }
+.message-content code {
+  background: rgba(91,110,245,0.15);
+  border: 1px solid rgba(91,110,245,0.25);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85em;
+}
+.message-content pre {
+  background: #0C0E14;
+  border: 1px solid #2A2F45;
+  border-radius: 8px;
+  padding: 1rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+.message-content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}
+.message-content ul, .message-content ol {
+  padding-left: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+.message-content li { margin-bottom: 0.25rem; }

@@ -1,0 +1,180 @@
+"""FastAPI dependency injection.
+
+Provides:
+- ConfigManager singleton (loaded once at startup)
+- ChatService singleton (LLM provider is expensive to initialise)
+- JWT token creation and verification
+- get_current_user — resolves a Bearer token to a UserRecord
+- Singletons (ConfigManager, ChatService) are initialised once in the lifespan
+  context manager in main.py and stored on app.state. Per-request dependencies
+- (MemoryRepository, get_current_user) are plain functions resolved by FastAPI.
+"""
+
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+from jose import JWTError, jwt
+
+from ..chat_service import ChatService
+from ..core.config import ConfigManager
+from ..core.models import UserRecord
+from ..databases.pipeline import IngestionPipeline
+from ..databases.retrieval import PgVectorRetrievalRepository
+from ..embedding.base import BaseEmbedder
+from ..memory.repository import AuthenticationError, MemoryRepository, MemoryRepositoryError
+from ..orchestrators import RAGOrchestrator
+
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_DAYS = 7
+
+bearer_scheme = HTTPBearer()
+
+
+# ---------------------------------------------------------------------------
+# app.state accessors — called by per-request dependencies
+# ---------------------------------------------------------------------------
+
+def get_config(request: Request) -> ConfigManager:
+    return request.app.state.config
+
+
+def get_chat_service(request: Request) -> ChatService:
+    return request.app.state.chat_service
+
+
+def get_embedder(request: Request) -> BaseEmbedder:
+    """Return the embedder singleton (loaded once at startup)."""
+    return request.app.state.embedder
+
+
+def get_orchestrator(request: Request) -> RAGOrchestrator:
+    """Return the RAGOrchestrator singleton (compiled once at startup)."""
+    return request.app.state.orchestrator
+
+
+def get_pending_clarifications(request: Request) -> dict[str, str]:
+    """Return the in-process pending-clarifications mapping (session_id → thread_id)."""
+    return request.app.state.pending_clarifications
+
+
+def get_scheduler(request: Request) -> AsyncIOScheduler:
+    """Return the APScheduler instance stored at startup."""
+    return request.app.state.scheduler
+
+
+def get_job_history(request: Request) -> dict:
+    """Return the in-memory job-history dict updated by each background job."""
+    return request.app.state.job_history
+
+
+# ---------------------------------------------------------------------------
+# Per-request dependencies
+# ---------------------------------------------------------------------------
+
+def get_repo(request: Request) -> MemoryRepository:
+    """Return a fresh MemoryRepository for each request."""
+    return MemoryRepository(request.app.state.config.db_config)
+
+
+def get_retrieval_repo(request: Request) -> PgVectorRetrievalRepository:
+    """Return a fresh retrieval repository for each request."""
+    return PgVectorRetrievalRepository(request.app.state.config.db_config)
+
+
+def get_ingestion_pipeline(request: Request) -> IngestionPipeline:
+    """Return an IngestionPipeline backed by the startup embedder singleton."""
+    return IngestionPipeline(
+        db_config=request.app.state.config.db_config,
+        embedder=request.app.state.embedder,
+    )
+
+
+# ---------------------------------------------------------------------------
+# JWT helpers
+# ---------------------------------------------------------------------------
+
+def _get_secret() -> str:
+    secret = os.getenv("JWT_SECRET_KEY")
+    if not secret:
+        raise RuntimeError(
+            "JWT_SECRET_KEY environment variable is not set. "
+            "Add it to your .env file."
+        )
+    return secret
+
+
+def create_access_token(user_id: str) -> str:
+    """Encode a JWT that expires in ACCESS_TOKEN_EXPIRE_DAYS days."""
+    expire = datetime.now(timezone.utc) + timedelta(days=ACCESS_TOKEN_EXPIRE_DAYS)
+    payload = {"sub": user_id, "exp": expire}
+    return jwt.encode(payload, _get_secret(), algorithm=ALGORITHM)
+
+
+def _decode_token(token: str) -> str:
+    """Decode token and return the user_id (sub claim).
+
+    Raises HTTPException 401 on any failure.
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid or expired token.",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, _get_secret(), algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        return user_id
+    except JWTError:
+        raise credentials_exception
+
+
+# ---------------------------------------------------------------------------
+# Current-user dependency
+# ---------------------------------------------------------------------------
+
+def get_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials, Depends(bearer_scheme)],
+    repo: Annotated[MemoryRepository, Depends(get_repo)],
+) -> UserRecord:
+    """Verify the Bearer token and return the corresponding UserRecord."""
+    user_id = _decode_token(credentials.credentials)
+    try:
+        user = repo.get_user_by_id(user_id)
+    except MemoryRepositoryError as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
+
+
+def require_admin(
+    current_user: Annotated[UserRecord, Depends(get_current_user)],
+) -> UserRecord:
+    """Raise 403 unless the current user's email is in the ADMIN_EMAILS env var.
+
+    Set ADMIN_EMAILS to a comma-separated list of admin email addresses, e.g.:
+        ADMIN_EMAILS=alice@example.com,bob@example.com
+    """
+    raw = os.getenv("ADMIN_EMAILS", "")
+    admin_emails = {e.strip().lower() for e in raw.split(",") if e.strip()}
+    if current_user.email.lower() not in admin_emails:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required.",
+        )
+    return current_user

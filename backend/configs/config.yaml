@@ -1,0 +1,117 @@
+app:
+  name: "Research Paper Chat"
+  version: "1.0.0"
+  debug: false
+
+embeddings:
+  provider: "openai" # Options: "local", "ollama", "openai"
+  local:
+    model: "sentence-transformers/all-MiniLM-L6-v2"
+    dimension: 384
+  ollama:
+    model: "nomic-embed-text-v2-moe:latest"
+    dimension: 1024
+  openai:
+    model: "text-embedding-3-small"
+    api_key: "${OPENAI_API_KEY}"
+    dimension: 1536
+
+llm:
+  # Provider options: "ollama", "openai"
+  provider: "openai"
+
+  # Ollama configuration
+  ollama:
+    model: "mistral:7b"
+    base_url: "http://localhost:11434"
+    temperature: 0.7
+    top_p: 0.9
+
+  # OpenAI configuration
+  openai:
+    model: "gpt-4.1-mini"
+    api_key: "${OPENAI_API_KEY}"
+    temperature: 0.7
+    max_tokens: 8000
+
+chat:
+  system_prompt: "You are a helpful AI assistant specialized in discussing and analyzing research papers. Provide clear, accurate, and insightful responses."
+  timeout: 60
+  short_term_limit: 10
+  long_term_similarity_threshold: 0.5  # minimum cosine similarity (0–1) for long-term memory hits
+
+# PostgreSQL connection — values can be overridden via environment variables.
+# Set the corresponding env vars in your .env file for secrets.
+database:
+  host: "${DB_HOST}"
+  port: "${DB_PORT}"
+  database: "${DB_NAME}"
+  user: "${DB_USER}"
+  password: "${DB_PASSWORD}"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/app.log"
+
+reranker:
+  enabled: true
+  model: "BAAI/bge-reranker-base"  # Options: bge-reranker-base, bge-reranker-large, bge-reranker-v2-m3
+  top_k: 5                          # chunks to keep after reranking
+  device: "cpu"                     # "cpu" or "cuda"
+
+storage:
+  # "local"  — files saved to disk under storage/; state kept in-process
+  # "cloud"  — files in object storage; state in Redis
+  deployment: local
+  cloud:
+    provider: aws           # aws | azure | gcp  (only aws is implemented)
+    aws:
+      s3_bucket: "${AWS_S3_BUCKET}"
+      s3_region: "${AWS_S3_REGION}"
+      redis_url: "${REDIS_URL}"   # e.g. redis://my-elasticache.abc.cache.amazonaws.com:6379
+
+guardrails:
+  # Set to false to disable all guardrail checks
+  enabled: false
+  # Model used by DeepEval to judge metrics. Use a fast cheap model to minimise
+  # latency overhead. All metrics run concurrently so cost = 3 parallel calls.
+  evaluator_model: "gpt-4.1-mini"
+  input:
+    toxicity: true
+    bias: true
+    prompt_injection: true
+    jailbreaking: true
+
+jobs:
+  intersession:
+    enabled: true
+    summary_interval_hours: 24          # regenerate summaries every 24 h
+    max_summaries_per_prompt: 5         # how many past-session summaries to inject
+    intersession_context_max_tokens: 2000  # total token budget for injected summaries
+  chunk_scoring:
+    interval_hours: 168                 # recompute chunk scores weekly
+    rlhf_alpha: 0.2                     # weight of quality score vs cosine in retrieval
+
+mcp:
+  # Set to false to run without the MCP tools server (no web/calculate/analyse/rav_idp tools).
+  enabled: true
+  # "stdio"            — launch mcp-tools-library as a local subprocess (development default)
+  # "streamable-http"  — connect to an already-running remote MCP server (production)
+  transport: "streamable-http"
+
+  # ── stdio configuration (used when transport = "stdio") ──────────────────
+  stdio:
+    command: "python"
+    args: ["../mcp-tools-library/mcp_server.py"]
+    # Environment variables forwarded to the MCP subprocess.
+    # The subprocess inherits the full parent env; list only overrides here.
+    env:
+      TAVILY_API_KEY: "${TAVILY_API_KEY}"
+      E2B_API_KEY: "${E2B_API_KEY}"
+      RAV_IDP_MODE: "full"
+      RAV_IDP_OUTPUT_DIR: ".mcp-data/rav-idp"
+
+  # ── HTTP configuration (used when transport = "streamable-http") ──────────
+  http:
+    url: "${MCP_SERVER_URL}"

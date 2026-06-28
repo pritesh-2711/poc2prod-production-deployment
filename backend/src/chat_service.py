@@ -1,0 +1,311 @@
+"""Chat service for managing conversations with research papers."""
+
+from typing import List, Optional
+
+from .core.exceptions import ChatServiceError, InputBlockedError
+from .core.logging import LoggingManager
+from .core.models import ChatConfig, ChatRecord, LLMConfig
+from .guardrails import InputGuard
+from .providers import LLMProviderFactory, BaseLLMProvider
+
+logger = LoggingManager.get_logger(__name__)
+
+_MERMAID_RULES = """
+Diagram rules (follow exactly):
+- When asked for a flow chart, process diagram, sequence diagram, architecture diagram, \
+or any structural/relational visualisation, respond with a Mermaid diagram in a fenced code block:
+  ```mermaid
+  flowchart TD
+      A[Start] --> B[Step]
+  ```
+- NEVER output raw SVG or HTML. NEVER describe a diagram in plain text when a visual is explicitly requested.
+- The UI renders Mermaid natively — the user sees the actual rendered diagram, not code.
+- Use the correct type: flowchart TD/LR for pipelines, sequenceDiagram for interactions, \
+classDiagram for structure, gantt for timelines.
+- Node labels must use plain ASCII only — no &amp; &lt; &gt; or HTML entities. Write "and" not "&".
+- Node IDs must be short alphanumeric words (no spaces). Every subgraph must have a matching end.
+- Keep labels concise (5 words max).
+- For data charts (bar, line, scatter, histogram) do NOT use Mermaid — use the analyse tool \
+with Python/matplotlib. If the analyse tool is unavailable, say so rather than attempting a Mermaid chart."""
+
+
+class ChatService:
+    """Main service for managing chat conversations.
+
+    This service orchestrates the interaction between the LLM provider,
+    chat messages, and configuration.
+    """
+
+    def __init__(
+        self,
+        llm_config: LLMConfig,
+        chat_config: ChatConfig,
+        input_guard: Optional[InputGuard] = None,
+    ):
+        """Initialize the chat service.
+
+        Args:
+            llm_config: LLM configuration.
+            chat_config: Chat configuration.
+
+        Raises:
+            ChatServiceError: If initialization fails.
+        """
+        try:
+            self.llm_config = llm_config
+            self.chat_config = chat_config
+            self.input_guard = input_guard
+            self.llm_provider = self._initialize_provider()
+            logger.info("ChatService initialized successfully")
+
+        except Exception as e:
+            logger.error(f"ChatService initialization failed: {e}")
+            raise ChatServiceError(f"Failed to initialize ChatService: {e}")
+
+    def _initialize_provider(self) -> BaseLLMProvider:
+        """Initialize the LLM provider based on configuration.
+
+        Returns:
+            An initialized LLM provider instance.
+
+        Raises:
+            ChatServiceError: If provider initialization fails.
+        """
+        try:
+            provider_kwargs = {}
+
+            if self.llm_config.provider == "ollama":
+                if self.llm_config.base_url:
+                    provider_kwargs["base_url"] = self.llm_config.base_url
+
+            elif self.llm_config.provider == "openai":
+                if self.llm_config.api_key:
+                    provider_kwargs["api_key"] = self.llm_config.api_key
+                if self.llm_config.max_tokens:
+                    provider_kwargs["max_tokens"] = self.llm_config.max_tokens
+
+            provider = LLMProviderFactory.create(
+                provider_name=self.llm_config.provider,
+                model=self.llm_config.model,
+                temperature=self.llm_config.temperature,
+                **provider_kwargs,
+            )
+
+            return provider
+
+        except Exception as e:
+            logger.error(f"Provider initialization failed: {e}")
+            raise ChatServiceError(f"Failed to initialize LLM provider: {e}")
+
+    def get_response(
+        self,
+        user_message: str,
+        history: Optional[List[ChatRecord]] = None,
+    ) -> str:
+        """Get a response from the LLM for a user message.
+
+        Conversation history is injected into the system prompt so the model
+        has full context of the current session.
+
+        Args:
+            user_message: The user's message.
+            history: Prior chat records for the active session. Oldest first.
+
+        Returns:
+            The LLM's response as a string.
+
+        Raises:
+            ChatServiceError: If response generation fails.
+        """
+        try:
+            if self.input_guard:
+                result = self.input_guard.check(user_message)
+                if not result.passed:
+                    raise InputBlockedError(
+                        f"Message blocked by {result.violated_guard} guard."
+                    )
+
+            response = self.llm_provider.chat(
+                user_message=user_message,
+                system_prompt=self._build_system_prompt(history),
+            )
+            logger.info("Successfully generated response")
+            return response
+
+        except InputBlockedError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get response: {e}")
+            raise ChatServiceError(f"Failed to generate response: {e}")
+
+    async def get_response_async(
+        self,
+        user_message: str,
+        short_term_history: Optional[List[ChatRecord]] = None,
+        long_term_history: Optional[List[dict]] = None,
+        rag_context: Optional[str] = None,
+        intersession_context: Optional[str] = None,
+    ) -> str:
+        """Asynchronously get a response from the LLM.
+
+        Args:
+            user_message:       The user's message.
+            short_term_history: Last N ChatRecord objects (oldest first).
+            long_term_history:  Semantically relevant past exchange dicts from
+                                vector search (keys: sender, message, created_at).
+            rag_context:        Retrieved document context to inject into the
+                                system prompt. Pass None when no documents are
+                                uploaded or retrieval is unavailable.
+
+        Returns:
+            The LLM's response as a string.
+
+        Raises:
+            ChatServiceError: If response generation fails.
+        """
+        try:
+            if self.input_guard:
+                result = await self.input_guard.acheck(user_message)
+                if not result.passed:
+                    raise InputBlockedError(
+                        f"Message blocked by {result.violated_guard} guard."
+                    )
+
+            response = await self.llm_provider.achat(
+                user_message=user_message,
+                system_prompt=self._build_system_prompt(
+                    short_term_history, long_term_history, rag_context, intersession_context
+                ),
+            )
+            logger.info("Successfully generated async response")
+            return response
+
+        except InputBlockedError:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to get async response: {e}")
+            raise ChatServiceError(f"Failed to generate async response: {e}")
+
+    def _build_system_prompt(
+        self,
+        short_term_history: Optional[List[ChatRecord]] = None,
+        long_term_history: Optional[List[dict]] = None,
+        rag_context: Optional[str] = None,
+        intersession_context: Optional[str] = None,
+    ) -> str:
+        """Compose the system prompt with RAG context and split memory.
+
+        Section order (closest to current message last):
+          base prompt → RAG excerpts → intersession summaries
+          → long-term (semantic) → short-term (recent)
+
+        Args:
+            short_term_history:    Last N ChatRecord objects, oldest first.
+            long_term_history:     Semantically similar past exchange dicts.
+            rag_context:           Retrieved document passages.
+            intersession_context:  Concatenated summaries of prior sessions.
+
+        Returns:
+            Full system prompt string.
+        """
+        parts = [self.chat_config.system_prompt, _MERMAID_RULES]
+
+        if rag_context:
+            parts.append(
+                "\n\nUse the following excerpts from the uploaded documents to "
+                "answer the user's question. If the answer is not in the excerpts, "
+                "say so clearly rather than guessing.\n\n"
+                "--- Relevant Document Excerpts ---\n"
+                f"{rag_context}\n"
+                "--- End of Excerpts ---"
+            )
+
+        if intersession_context:
+            parts.append(
+                "\n\nThe following are summaries of the user's previous sessions. "
+                "Use them as background context where relevant, but do not surface "
+                "them unless the user's question relates to past work.\n\n"
+                "--- Previous Session Summaries ---\n"
+                f"{intersession_context}\n"
+                "--- End of Previous Session Summaries ---"
+            )
+
+        if long_term_history:
+            lt_lines = [
+                f"{'User' if r['sender'] == 'user' else 'Assistant'}: {r['message']}"
+                for r in long_term_history
+            ]
+            parts.append(
+                "\n\nThe following are relevant past exchanges from earlier in this "
+                "session, retrieved by semantic similarity to the current question.\n\n"
+                "--- Relevant Past Exchanges ---\n"
+                + "\n".join(lt_lines) + "\n"
+                "--- End of Relevant Past Exchanges ---"
+            )
+
+        if short_term_history:
+            st_lines = [
+                f"{'User' if r.sender == 'user' else 'Assistant'}: {r.message}"
+                for r in short_term_history
+            ]
+            parts.append(
+                "\n\nThe following is the most recent conversation.\n\n"
+                "--- Recent Conversation ---\n"
+                + "\n".join(st_lines) + "\n"
+                "--- End of Recent Conversation ---"
+            )
+
+        return "".join(parts)
+
+    async def stream_response_async(
+        self,
+        user_message: str,
+        short_term_history: Optional[List[ChatRecord]] = None,
+        long_term_history: Optional[List[dict]] = None,
+        rag_context: Optional[str] = None,
+        intersession_context: Optional[str] = None,
+    ):
+        """Stream tokens from the LLM one chunk at a time.
+
+        Yields str chunks as they arrive from the provider.
+        Raises InputBlockedError if the input guard blocks the message.
+        """
+        if self.input_guard:
+            result = await self.input_guard.acheck(user_message)
+            if not result.passed:
+                raise InputBlockedError(
+                    f"Message blocked by {result.violated_guard} guard."
+                )
+
+        system_prompt = self._build_system_prompt(
+            short_term_history, long_term_history, rag_context, intersession_context
+        )
+        async for chunk in self.llm_provider.astream_chat(
+            user_message=user_message,
+            system_prompt=system_prompt,
+        ):
+            yield chunk
+
+    def switch_provider(self, provider_name: str, model: Optional[str] = None) -> None:
+        """Switch to a different LLM provider.
+
+        Args:
+            provider_name: Name of the new provider.
+            model: Optional new model. If not provided, uses configured model.
+
+        Raises:
+            ChatServiceError: If provider switch fails.
+        """
+        try:
+            old_provider = self.llm_config.provider
+            self.llm_config.provider = provider_name
+
+            if model:
+                self.llm_config.model = model
+
+            self.llm_provider = self._initialize_provider()
+            logger.info(f"Switched provider from {old_provider} to {provider_name}")
+
+        except Exception as e:
+            logger.error(f"Failed to switch provider: {e}")
+            raise ChatServiceError(f"Failed to switch provider: {e}")

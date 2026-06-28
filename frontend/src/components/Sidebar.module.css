@@ -1,0 +1,351 @@
+.root {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.header {
+  padding: 16px 16px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logoMark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, var(--accent) 0%, #a78bfa 100%);
+  flex-shrink: 0;
+}
+
+.logoText {
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.newSession {
+  padding: 12px;
+  flex-shrink: 0;
+}
+
+.newBtn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border: 1px dashed var(--border);
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+
+.newBtn:hover {
+  color: var(--text-primary);
+  border-color: var(--accent-border);
+  background: var(--accent-dim);
+}
+
+.newForm {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.newInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-elevated);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+  font-size: 13px;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.newInput::placeholder {
+  color: var(--text-muted);
+}
+
+.newConfirm {
+  padding: 7px 10px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  min-height: 31px;
+}
+
+.newCancel {
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 4px;
+  transition: color 0.15s;
+}
+
+.newCancel:hover {
+  color: var(--text-primary);
+}
+
+.sessions {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 8px;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 24px 16px;
+}
+
+.groupLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 12px 8px 4px;
+}
+
+.sessionItem {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 10px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.sessionItem:hover {
+  background: var(--bg-hover);
+}
+
+.sessionActive {
+  background: var(--accent-dim);
+}
+
+.sessionActive:hover {
+  background: var(--accent-dim);
+}
+
+.sessionInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.sessionName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sessionDate {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.sessionActions {
+  position: relative;
+  flex-shrink: 0;
+  margin-left: 4px;
+}
+
+.menuBtn {
+  color: var(--text-muted);
+  padding: 4px;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background 0.15s;
+}
+
+.sessionItem:hover .menuBtn,
+.sessionActive .menuBtn {
+  opacity: 1;
+}
+
+.menuBtn:hover {
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+}
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  min-width: 130px;
+  z-index: 100;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-radius: 4px;
+  transition: background 0.12s, color 0.12s;
+}
+
+.menuItem:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.menuItemDanger {
+  color: var(--danger);
+}
+
+.menuItemDanger:hover {
+  background: var(--danger-dim);
+  color: var(--danger);
+}
+
+.footer {
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.userInfo {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 1;
+  min-width: 0;
+}
+
+.avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--accent-dim);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.userMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.userName {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.userEmail {
+  font-size: 10px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.footerActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.driveBtn {
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+}
+
+.driveBtn:hover {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.driveBtnActive {
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+
+.signout {
+  color: var(--text-muted);
+  padding: 6px;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+
+.signout:hover {
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+
+.spinnerSm {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
