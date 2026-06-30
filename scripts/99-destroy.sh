@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PATH="${REPO_ROOT}/.tools/bin:${PATH}"
+export PATH
+cd "${REPO_ROOT}"
+
 if [ "${CONFIRM_DESTROY:-}" != "destroy" ]; then
   echo "Refusing to destroy. Re-run with CONFIRM_DESTROY=destroy." >&2
   exit 1
@@ -32,4 +38,3 @@ Manual verification checklist:
 - no stale CloudFront distributions
 - no costly S3 objects left behind
 CHECKLIST
-

@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PATH="${REPO_ROOT}/.tools/bin:${PATH}"
+export PATH
+cd "${REPO_ROOT}"
+
 AWS_REGION="${AWS_REGION:-ap-south-1}"
 AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-$(aws sts get-caller-identity --query Account --output text)}"
 STATE_BUCKET="${STATE_BUCKET:-poc2prod-terraform-state-${AWS_ACCOUNT_ID}}"

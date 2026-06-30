@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+PATH="${REPO_ROOT}/.tools/bin:${PATH}"
+export PATH
+cd "${REPO_ROOT}"
+
 NAMESPACE="${NAMESPACE:-poc2prod}"
 RELEASE_NAME="${RELEASE_NAME:-poc2prod}"
 IMAGE_TAG="${IMAGE_TAG:-manual-test}"
@@ -17,4 +23,3 @@ helm upgrade --install "${RELEASE_NAME}" helm/poc2prod \
   --set api.image.tag="${IMAGE_TAG}"
 
 kubectl rollout status "deploy/${RELEASE_NAME}-api" -n "${NAMESPACE}"
-

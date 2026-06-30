@@ -4,4 +4,4 @@
 terraform/environments/*/.terraform.lock.hcl
 terraform/environments/*/backend.hcl
 terraform/environments/*/tfplan
-
+.tools/
