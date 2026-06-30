@@ -1,0 +1,7 @@
+apiVersion: v2
+name: poc2prod
+description: Production Helm chart for Poc2Prod backend, jobs, and MCP service
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+

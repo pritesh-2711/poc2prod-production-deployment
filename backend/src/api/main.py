@@ -37,6 +37,18 @@ ENABLE_IN_PROCESS_SCHEDULER = (
 )
 
 
+def _cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ORIGINS", "")
+    configured = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if configured:
+        return configured
+    return [
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:5173",
+    ]
+
+
 def _setup_logging(logging_config_path: str = "configs/logging.yaml") -> None:
     config_path = Path(logging_config_path)
     if not config_path.exists():
@@ -196,11 +208,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:4173",
-        "http://127.0.0.1:5173",
-    ],
+    allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -212,6 +220,12 @@ app.include_router(chat_router)
 app.include_router(upload_router)
 app.include_router(documents_router)
 app.include_router(admin_router)
+app.include_router(auth_router, prefix="/api", include_in_schema=False)
+app.include_router(sessions_router, prefix="/api", include_in_schema=False)
+app.include_router(chat_router, prefix="/api", include_in_schema=False)
+app.include_router(upload_router, prefix="/api", include_in_schema=False)
+app.include_router(documents_router, prefix="/api", include_in_schema=False)
+app.include_router(admin_router, prefix="/api", include_in_schema=False)
 
 
 @app.get("/health", tags=["health"])

@@ -231,7 +231,7 @@ class ConfigManager:
             StorageConfig with deployment target and provider-specific settings.
         """
         st = self.config.get("storage", {})
-        deployment = st.get("deployment", "local").lower()
+        deployment = os.getenv("STORAGE_DEPLOYMENT", st.get("deployment", "local")).lower()
 
         if deployment not in {"local", "cloud"}:
             raise ConfigurationError(
@@ -242,7 +242,7 @@ class ConfigManager:
             return StorageConfig(deployment="local")
 
         cloud = st.get("cloud", {})
-        provider = cloud.get("provider", "aws").lower()
+        provider = os.getenv("CLOUD_PROVIDER", cloud.get("provider", "aws")).lower()
 
         if provider not in {"aws", "azure", "gcp"}:
             raise ConfigurationError(

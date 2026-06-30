@@ -1,0 +1,120 @@
+nameOverride: ""
+fullnameOverride: ""
+
+global:
+  namespace: poc2prod
+  awsRegion: ap-south-1
+  clusterSecretStoreName: aws-secrets-manager
+
+externalSecrets:
+  enabled: true
+  createClusterSecretStore: true
+  remoteSecretName: poc2prod-prod/app
+  secretName: poc2prod-app
+
+api:
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: manual-test
+    pullPolicy: IfNotPresent
+  serviceAccount:
+    create: true
+    name: ""
+    annotations: {}
+  podAnnotations: {}
+  podSecurityContext:
+    fsGroup: 1000
+  securityContext:
+    allowPrivilegeEscalation: false
+    runAsNonRoot: true
+    runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
+  service:
+    type: ClusterIP
+    port: 8000
+  ingress:
+    enabled: false
+    className: alb
+    host: ""
+    scheme: internet-facing
+    targetType: ip
+    certificateArn: ""
+    healthcheckPath: /health
+    groupName: poc2prod-prod
+    annotations: {}
+  env:
+    ENABLE_IN_PROCESS_SCHEDULER: "false"
+    STORAGE_DEPLOYMENT: cloud
+    CLOUD_PROVIDER: aws
+    DB_SSL_MODE: require
+    MCP_TRANSPORT: streamable-http
+    MCP_SERVER_URL: http://poc2prod-mcp:8001/mcp
+    AWS_S3_REGION: ap-south-1
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 4Gi
+  autoscaling:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 60
+  pdb:
+    enabled: false
+    minAvailable: 1
+
+mcp:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: ""
+    tag: manual-test
+    pullPolicy: IfNotPresent
+  service:
+    port: 8001
+  env:
+    MCP_TRANSPORT: streamable-http
+    MCP_HOST: 0.0.0.0
+    MCP_PORT: "8001"
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 2Gi
+
+cronjobs:
+  enabled: false
+  image:
+    repository: ""
+    tag: manual-test
+    pullPolicy: IfNotPresent
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobs:
+    intersession:
+      schedule: "0 */6 * * *"
+      command:
+        - python
+        - -m
+        - src.jobs.cli.run_intersession_memory
+    chunkScoring:
+      schedule: "0 2 * * 0"
+      command:
+        - python
+        - -m
+        - src.jobs.cli.run_chunk_scoring
+    outputGuardrail:
+      schedule: "0 * * * *"
+      command:
+        - python
+        - -m
+        - src.jobs.cli.run_output_guardrail
+

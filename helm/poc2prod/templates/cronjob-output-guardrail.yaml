@@ -1,0 +1,34 @@
+{{- if .Values.cronjobs.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "poc2prod.fullname" . }}-output-guardrail
+  labels:
+    {{- include "poc2prod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: cronjob
+spec:
+  schedule: {{ .Values.cronjobs.jobs.outputGuardrail.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.cronjobs.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.cronjobs.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ include "poc2prod.apiServiceAccountName" . }}
+          restartPolicy: OnFailure
+          containers:
+            - name: output-guardrail
+              image: {{ include "poc2prod.jobImage" . | quote }}
+              imagePullPolicy: {{ .Values.cronjobs.image.pullPolicy }}
+              command:
+                {{- toYaml .Values.cronjobs.jobs.outputGuardrail.command | nindent 16 }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "poc2prod.fullname" . }}-config
+                {{- if .Values.externalSecrets.enabled }}
+                - secretRef:
+                    name: {{ .Values.externalSecrets.secretName }}
+                {{- end }}
+{{- end }}
+

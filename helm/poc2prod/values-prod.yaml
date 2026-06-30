@@ -1,0 +1,32 @@
+global:
+  namespace: poc2prod
+  awsRegion: ap-south-1
+  clusterSecretStoreName: aws-secrets-manager
+
+externalSecrets:
+  remoteSecretName: poc2prod-prod/app
+  secretName: poc2prod-app
+
+api:
+  replicaCount: 1
+  image:
+    repository: <account-id>.dkr.ecr.ap-south-1.amazonaws.com/poc2prod-prod-backend
+    tag: manual-test
+  ingress:
+    enabled: true
+    host: poc2prod.pritesh-jha.in
+    certificateArn: ""
+  env:
+    CORS_ORIGINS: https://poc2prod.pritesh-jha.in
+    AWS_S3_REGION: ap-south-1
+
+cronjobs:
+  image:
+    repository: <account-id>.dkr.ecr.ap-south-1.amazonaws.com/poc2prod-prod-backend
+    tag: manual-test
+
+mcp:
+  image:
+    repository: <account-id>.dkr.ecr.ap-south-1.amazonaws.com/poc2prod-prod-mcp
+    tag: manual-test
+

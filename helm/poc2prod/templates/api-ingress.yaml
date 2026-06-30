@@ -1,0 +1,46 @@
+{{- if .Values.api.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "poc2prod.fullname" . }}-api
+  labels:
+    {{- include "poc2prod.labels" . | nindent 4 }}
+    app.kubernetes.io/component: api
+  annotations:
+    alb.ingress.kubernetes.io/scheme: {{ .Values.api.ingress.scheme | quote }}
+    alb.ingress.kubernetes.io/target-type: {{ .Values.api.ingress.targetType | quote }}
+    alb.ingress.kubernetes.io/healthcheck-path: {{ .Values.api.ingress.healthcheckPath | quote }}
+    alb.ingress.kubernetes.io/group.name: {{ .Values.api.ingress.groupName | quote }}
+    {{- if .Values.api.ingress.certificateArn }}
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.api.ingress.certificateArn | quote }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS":443}]'
+    {{- else }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80}]'
+    {{- end }}
+    {{- with .Values.api.ingress.annotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  ingressClassName: {{ .Values.api.ingress.className }}
+  rules:
+    - {{- if .Values.api.ingress.host }}
+      host: {{ .Values.api.ingress.host }}
+      {{- end }}
+      http:
+        paths:
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "poc2prod.fullname" . }}-api
+                port:
+                  name: http
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: {{ include "poc2prod.fullname" . }}-api
+                port:
+                  name: http
+{{- end }}
+
