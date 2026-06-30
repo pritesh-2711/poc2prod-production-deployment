@@ -40,6 +40,7 @@ async def run_intersession_memory_job(
     embedder=None,
     intersession_config: IntersessionConfig | None = None,
     dry_run: bool | None = None,
+    smoke_test: bool = False,
     batch_size: int | None = None,
 ) -> dict:
     """Summarise sessions once and upsert summary embeddings."""
@@ -47,10 +48,24 @@ async def run_intersession_memory_job(
     dry_run_enabled = job_dry_run(dry_run)
     limit = job_batch_size(batch_size)
 
+    logger.info(
+        "Intersession memory job started",
+        extra={"dry_run": dry_run_enabled, "smoke_test": smoke_test},
+    )
+
     config = None
     if intersession_repo is None or chat_service is None or embedder is None or intersession_config is None:
         config = build_config()
     intersession_config = intersession_config or config.jobs_config.intersession
+
+    if smoke_test:
+        duration = time.monotonic() - started
+        logger.info(
+            "Intersession memory smoke test passed. "
+            "No database, LLM, embedding, or external service calls were made.",
+            extra={"duration_seconds": round(duration, 3)},
+        )
+        return {"processed": 0, "skipped": 0, "failed": 0, "duration_seconds": duration}
 
     if not intersession_config.enabled:
         duration = time.monotonic() - started
@@ -70,7 +85,7 @@ async def run_intersession_memory_job(
     candidates = sessions[:limit] if limit else sessions
 
     logger.info(
-        "Intersession memory job started",
+        "Intersession memory candidates loaded",
         extra={
             "input_count": input_count,
             "candidate_count": len(candidates),

@@ -25,6 +25,7 @@ def main() -> int:
         "Output guardrail job",
         run_output_guardrail_job(
             dry_run=args.dry_run,
+            smoke_test=args.smoke_test,
             batch_size=args.batch_size,
             window_hours=args.window_hours,
         ),

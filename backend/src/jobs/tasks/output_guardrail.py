@@ -69,6 +69,7 @@ async def run_output_guardrail_job(
     job_history: dict | None = None,
     window_hours: int = 24,
     dry_run: bool | None = None,
+    smoke_test: bool = False,
     batch_size: int | None = None,
 ) -> dict:
     """Evaluate recent unprocessed assistant messages once."""
@@ -79,10 +80,28 @@ async def run_output_guardrail_job(
     limit = job_batch_size(batch_size)
     job_history = job_history if job_history is not None else {}
 
+    logger.info(
+        "Output guardrail job started",
+        extra={"dry_run": dry_run_enabled, "smoke_test": smoke_test},
+    )
+
     config = None
     if admin_repo is None or guardrails_config is None:
         config = build_config()
     guardrails_config = guardrails_config or config.guardrails_config
+
+    if smoke_test:
+        duration = time.monotonic() - started
+        logger.info(
+            "Output guardrail smoke test passed. No external calls were made.",
+            extra={"duration_seconds": round(duration, 3)},
+        )
+        job_history[job_id] = {
+            "last_run": wall_started.isoformat(),
+            "status": "succeeded",
+            "detail": "smoke_test=true",
+        }
+        return {"processed": 0, "skipped": 0, "failed": 0, "duration_seconds": duration}
 
     processed = 0
     skipped = 0
@@ -111,7 +130,7 @@ async def run_output_guardrail_job(
         input_count = len(messages)
 
         logger.info(
-            "Output guardrail job started",
+            "Output guardrail candidates loaded",
             extra={
                 "input_count": input_count,
                 "candidate_count": input_count,

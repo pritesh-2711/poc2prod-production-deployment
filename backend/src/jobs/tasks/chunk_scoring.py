@@ -12,12 +12,25 @@ async def run_chunk_scoring_job(
     *,
     intersession_repo=None,
     dry_run: bool | None = None,
+    smoke_test: bool = False,
 ) -> dict:
     """Recompute chunk quality scores once."""
     started = time.monotonic()
     dry_run_enabled = job_dry_run(dry_run)
 
-    logger.info("Chunk scoring job started", extra={"dry_run": dry_run_enabled})
+    logger.info(
+        "Chunk scoring job started",
+        extra={"dry_run": dry_run_enabled, "smoke_test": smoke_test},
+    )
+
+    if smoke_test:
+        duration = time.monotonic() - started
+        build_config()
+        logger.info(
+            "Chunk scoring smoke test passed. No external calls were made.",
+            extra={"duration_seconds": round(duration, 3)},
+        )
+        return {"processed": 0, "skipped": 0, "failed": 0, "duration_seconds": duration}
 
     if dry_run_enabled:
         duration = time.monotonic() - started

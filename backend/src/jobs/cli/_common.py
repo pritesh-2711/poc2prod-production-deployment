@@ -17,6 +17,11 @@ def configure_logging() -> None:
 
 def add_common_args(parser: argparse.ArgumentParser, *, batch_size: bool = False) -> None:
     parser.add_argument(
+        "--smoke-test",
+        action="store_true",
+        help="Validate job imports/configuration and exit without external service calls.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         default=None,

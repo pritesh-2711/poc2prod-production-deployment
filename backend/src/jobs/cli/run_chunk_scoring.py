@@ -17,7 +17,10 @@ def main() -> int:
     args = parse_args()
     return run_job(
         "Chunk scoring job",
-        run_chunk_scoring_job(dry_run=args.dry_run),
+        run_chunk_scoring_job(
+            dry_run=args.dry_run,
+            smoke_test=args.smoke_test,
+        ),
     )
 
 

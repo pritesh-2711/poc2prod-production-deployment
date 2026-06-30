@@ -19,6 +19,7 @@ def main() -> int:
         "Intersession memory job",
         run_intersession_memory_job(
             dry_run=args.dry_run,
+            smoke_test=args.smoke_test,
             batch_size=args.batch_size,
         ),
     )
