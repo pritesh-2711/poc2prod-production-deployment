@@ -1,4 +1,4 @@
-"""Factory for the APScheduler AsyncIOScheduler used by the FastAPI lifespan."""
+"""Local-only APScheduler registration for development."""
 
 import logging
 from datetime import datetime, timezone
@@ -6,11 +6,24 @@ from datetime import datetime, timezone
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 from ..core.models import GuardrailsConfig, JobsConfig
-from .chunk_scoring import run_chunk_scoring_job
-from .intersession_memory import run_intersession_memory_job
-from .output_guardrail import run_output_guardrail_job
+from .tasks.chunk_scoring import run_chunk_scoring_job
+from .tasks.intersession_memory import run_intersession_memory_job
+from .tasks.output_guardrail import run_output_guardrail_job
 
 logger = logging.getLogger(__name__)
+
+
+def _format_job_detail(result) -> str:
+    if not isinstance(result, dict):
+        return ""
+    parts = []
+    for key in ("processed", "skipped", "failed", "duration_seconds"):
+        if key in result:
+            value = result[key]
+            if key == "duration_seconds":
+                value = round(float(value), 3)
+            parts.append(f"{key}={value}")
+    return ", ".join(parts)
 
 
 def _make_tracked(job_func, job_id: str, job_history: dict):
@@ -19,14 +32,12 @@ def _make_tracked(job_func, job_id: str, job_history: dict):
     async def _wrapper(**kwargs):
         started = datetime.now(timezone.utc)
         try:
-            await job_func(**kwargs)
-            if job_id not in job_history:
-                # job updated job_history itself (output_guardrail does this)
-                job_history[job_id] = {
-                    "last_run": started.isoformat(),
-                    "status": "succeeded",
-                    "detail": "",
-                }
+            result = await job_func(**kwargs)
+            job_history[job_id] = {
+                "last_run": started.isoformat(),
+                "status": "succeeded",
+                "detail": _format_job_detail(result),
+            }
         except Exception as exc:
             job_history[job_id] = {
                 "last_run": started.isoformat(),

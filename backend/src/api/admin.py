@@ -209,6 +209,34 @@ def get_jobs(
     scheduler=Depends(get_scheduler),
     job_history: dict = Depends(get_job_history),
 ):
+    if scheduler is None:
+        return [
+            AdminJobStatus(
+                job_id="intersession_memory",
+                interval_hours=None,
+                next_run=None,
+                last_run=job_history.get("intersession_memory", {}).get("last_run"),
+                status="disabled",
+                detail="In-process scheduler disabled; run via Kubernetes CronJob.",
+            ),
+            AdminJobStatus(
+                job_id="chunk_scoring",
+                interval_hours=None,
+                next_run=None,
+                last_run=job_history.get("chunk_scoring", {}).get("last_run"),
+                status="disabled",
+                detail="In-process scheduler disabled; run via Kubernetes CronJob.",
+            ),
+            AdminJobStatus(
+                job_id="output_guardrail",
+                interval_hours=None,
+                next_run=None,
+                last_run=job_history.get("output_guardrail", {}).get("last_run"),
+                status="disabled",
+                detail="In-process scheduler disabled; run via Kubernetes CronJob.",
+            ),
+        ]
+
     statuses = []
     for job in scheduler.get_jobs():
         history = job_history.get(job.id, {})

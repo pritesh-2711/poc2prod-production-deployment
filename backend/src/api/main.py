@@ -2,6 +2,7 @@
 
 import logging
 import logging.config
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -29,6 +30,11 @@ from .loader import BaseFileLoader, LocalFileLoader, S3FileLoader
 from .sessions import router as sessions_router
 from .state_backends import RedisClarificationStore
 from .upload import router as upload_router
+
+
+ENABLE_IN_PROCESS_SCHEDULER = (
+    os.getenv("ENABLE_IN_PROCESS_SCHEDULER", "false").lower() == "true"
+)
 
 
 def _setup_logging(logging_config_path: str = "configs/logging.yaml") -> None:
@@ -134,16 +140,24 @@ async def lifespan(app: FastAPI):
     )
 
     # ── Background job scheduler ──────────────────────────────────────────────
-    scheduler = create_scheduler(
-        jobs_config=jobs_cfg,
-        guardrails_config=config.guardrails_config,
-        intersession_repo=intersession_repo,
-        admin_repo=admin_repo,
-        chat_service=chat_service,
-        embedder=embedder,
-        job_history=job_history,
-    )
-    scheduler.start()
+    scheduler = None
+    if ENABLE_IN_PROCESS_SCHEDULER:
+        scheduler = create_scheduler(
+            jobs_config=jobs_cfg,
+            guardrails_config=config.guardrails_config,
+            intersession_repo=intersession_repo,
+            admin_repo=admin_repo,
+            chat_service=chat_service,
+            embedder=embedder,
+            job_history=job_history,
+        )
+        scheduler.start()
+        logger.warning(
+            "In-process scheduler is enabled. Use only for local/dev; "
+            "production jobs should run as Kubernetes CronJobs."
+        )
+    else:
+        logger.info("In-process scheduler disabled; jobs run via one-shot commands.")
 
     app.state.config = config
     app.state.chat_service = chat_service
@@ -167,7 +181,8 @@ async def lifespan(app: FastAPI):
         f"IntersessionMemory={'enabled' if jobs_cfg.intersession.enabled else 'disabled'}"
     )
     yield
-    scheduler.shutdown(wait=False)
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
     await mcp_tool_loader.disconnect()
     logger.info("Application shutdown.")
 

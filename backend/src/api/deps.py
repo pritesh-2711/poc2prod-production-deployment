@@ -66,9 +66,9 @@ def get_pending_clarifications(request: Request) -> dict[str, str]:
     return request.app.state.pending_clarifications
 
 
-def get_scheduler(request: Request) -> AsyncIOScheduler:
-    """Return the APScheduler instance stored at startup."""
-    return request.app.state.scheduler
+def get_scheduler(request: Request) -> AsyncIOScheduler | None:
+    """Return the APScheduler instance when local scheduling is enabled."""
+    return getattr(request.app.state, "scheduler", None)
 
 
 def get_job_history(request: Request) -> dict:

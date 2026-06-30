@@ -1,1 +1,1 @@
-"""Background job modules — scheduler, intersession memory, chunk scoring."""
+"""Background job modules and one-shot CronJob entry points."""
