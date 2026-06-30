@@ -131,6 +131,14 @@ class ConfigManager:
         database = self._resolve_env_vars(db_config.get("database", "${DB_NAME}"))
         user = self._resolve_env_vars(db_config.get("user", "${DB_USER}"))
         password = self._resolve_env_vars(db_config.get("password", "${DB_PASSWORD}"))
+        ssl_mode = self._resolve_env_vars(db_config.get("ssl_mode", "${DB_SSL_MODE}"))
+        if ssl_mode == "${DB_SSL_MODE}":
+            ssl_mode = "disable"
+        ssl_root_cert = self._resolve_env_vars(
+            db_config.get("ssl_root_cert", "${DB_SSL_ROOT_CERT}")
+        )
+        if ssl_root_cert == "${DB_SSL_ROOT_CERT}" or ssl_root_cert == "":
+            ssl_root_cert = None
 
         return DBConfig(
             host=host,
@@ -138,6 +146,8 @@ class ConfigManager:
             database=database,
             user=user,
             password=password,
+            ssl_mode=ssl_mode.lower(),
+            ssl_root_cert=ssl_root_cert,
         )
 
     def _build_embedding_config(self) -> EmbeddingConfig:

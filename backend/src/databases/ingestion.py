@@ -29,6 +29,7 @@ from ..core.exceptions import ResearchPaperChatException
 from ..core.logging import LoggingManager
 from ..core.models import DBConfig
 from .base import BaseIngestionRepository
+from .connection import asyncpg_connect_kwargs
 
 logger = LoggingManager.get_logger(__name__)
 
@@ -50,12 +51,10 @@ class PgVectorIngestionRepository(BaseIngestionRepository):
 
     async def _connect(self) -> asyncpg.Connection:
         return await asyncpg.connect(
-            host=self.db_config.host,
-            port=self.db_config.port,
-            database=self.db_config.database,
-            user=self.db_config.user,
-            password=self.db_config.password,
-            server_settings={"search_path": "poc2prod,public"},
+            **asyncpg_connect_kwargs(
+                self.db_config,
+                server_settings={"search_path": "poc2prod,public"},
+            )
         )
 
     @staticmethod

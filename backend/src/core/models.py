@@ -122,6 +122,8 @@ class DBConfig:
     database: str
     user: str
     password: str
+    ssl_mode: str = "disable"
+    ssl_root_cert: Optional[str] = None
 
 
 @dataclass

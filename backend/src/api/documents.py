@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
 
 from ..core.models import UserRecord
+from ..databases.connection import asyncpg_connect_kwargs
 from ..memory.repository import MemoryRepository, MemoryRepositoryError
 from .deps import get_current_user, get_repo
 
@@ -35,12 +36,10 @@ async def _fetch_session_documents(
 ) -> list[DocumentRecord]:
     """Query poc2prod.ingestions grouped by filename for a session."""
     conn = await asyncpg.connect(
-        host=db_config.host,
-        port=db_config.port,
-        database=db_config.database,
-        user=db_config.user,
-        password=db_config.password,
-        server_settings={"search_path": "poc2prod,public"},
+        **asyncpg_connect_kwargs(
+            db_config,
+            server_settings={"search_path": "poc2prod,public"},
+        )
     )
     try:
         rows = await conn.fetch(

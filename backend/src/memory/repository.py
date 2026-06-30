@@ -10,6 +10,7 @@ from psycopg2.extras import RealDictCursor
 from ..core.exceptions import ResearchPaperChatException
 from ..core.logging import LoggingManager
 from ..core.models import ChatRecord, DBConfig, SessionRecord, UserRecord
+from ..databases.connection import psycopg2_connect_kwargs
 
 logger = LoggingManager.get_logger(__name__)
 
@@ -43,14 +44,7 @@ class MemoryRepository:
         self.db_config = db_config
 
     def _connect(self):
-        return psycopg2.connect(
-            host=self.db_config.host,
-            port=self.db_config.port,
-            database=self.db_config.database,
-            user=self.db_config.user,
-            password=self.db_config.password,
-            options="-c search_path=poc2prod,public",
-        )
+        return psycopg2.connect(**psycopg2_connect_kwargs(self.db_config))
 
     # ------------------------------------------------------------------
     # Users

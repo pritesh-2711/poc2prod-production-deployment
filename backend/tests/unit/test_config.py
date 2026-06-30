@@ -60,6 +60,23 @@ def config_path(tmp_path: Path) -> Path:
 def test_loads_yaml_file(config_path: Path) -> None:
     cm = ConfigManager(str(config_path))
     assert cm.config is not None
+    assert cm.db_config.ssl_mode == "disable"
+    assert cm.db_config.ssl_root_cert is None
+
+
+def test_db_ssl_config_is_resolved_from_env(config_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    yaml = _BASE_YAML.replace(
+        "  password: testpass",
+        "  password: testpass\n  ssl_mode: ${DB_SSL_MODE}\n  ssl_root_cert: ${DB_SSL_ROOT_CERT}",
+    )
+    config_path.write_text(yaml)
+    monkeypatch.setenv("DB_SSL_MODE", "require")
+    monkeypatch.setenv("DB_SSL_ROOT_CERT", "/etc/ssl/certs/rds-ca.pem")
+
+    cm = ConfigManager(str(config_path))
+
+    assert cm.db_config.ssl_mode == "require"
+    assert cm.db_config.ssl_root_cert == "/etc/ssl/certs/rds-ca.pem"
 
 
 def test_missing_config_file_raises_configuration_error() -> None:

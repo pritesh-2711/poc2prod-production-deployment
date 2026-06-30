@@ -48,6 +48,8 @@ database:
   database: "${DB_NAME}"
   user: "${DB_USER}"
   password: "${DB_PASSWORD}"
+  ssl_mode: "${DB_SSL_MODE}"
+  ssl_root_cert: "${DB_SSL_ROOT_CERT}"
 
 logging:
   level: "INFO"
