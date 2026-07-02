@@ -1,5 +1,6 @@
 """PostgreSQL connection helpers shared by asyncpg and psycopg2 repositories."""
 
+import os
 import ssl
 from pathlib import Path
 from typing import Any
@@ -15,6 +16,19 @@ def _normalise_ssl_mode(db_config: DBConfig) -> str:
         supported = ", ".join(sorted(SUPPORTED_SSL_MODES))
         raise ValueError(f"Unsupported DB_SSL_MODE '{ssl_mode}'. Use one of: {supported}.")
     return ssl_mode
+
+
+def supports_startup_options(db_config: DBConfig) -> bool:
+    """Return whether the target accepts Postgres startup command-line options.
+
+    RDS Proxy for PostgreSQL rejects startup `options`, including
+    `-c search_path=...`, so production connections through the proxy must use
+    fully-qualified SQL names instead of connection-level search_path setup.
+    """
+    override = os.getenv("DB_STARTUP_OPTIONS_ENABLED")
+    if override is not None:
+        return override.lower() in {"1", "true", "yes", "on"}
+    return ".proxy-" not in db_config.host
 
 
 def _ssl_context(db_config: DBConfig, *, verify_hostname: bool) -> ssl.SSLContext:
@@ -43,7 +57,7 @@ def asyncpg_connect_kwargs(
         "user": db_config.user,
         "password": db_config.password,
     }
-    if server_settings:
+    if server_settings and supports_startup_options(db_config):
         kwargs["server_settings"] = server_settings
 
     if ssl_mode in {"verify-ca", "verify-full"} and db_config.ssl_root_cert:
@@ -67,8 +81,9 @@ def psycopg2_connect_kwargs(db_config: DBConfig) -> dict[str, Any]:
         "user": db_config.user,
         "password": db_config.password,
         "sslmode": ssl_mode,
-        "options": "-c search_path=poc2prod,public",
     }
+    if supports_startup_options(db_config):
+        kwargs["options"] = "-c search_path=poc2prod,public"
     if db_config.ssl_root_cert:
         kwargs["sslrootcert"] = str(Path(db_config.ssl_root_cert))
     return kwargs
