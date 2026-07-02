@@ -62,6 +62,31 @@ def test_loads_yaml_file(config_path: Path) -> None:
     assert cm.config is not None
     assert cm.db_config.ssl_mode == "disable"
     assert cm.db_config.ssl_root_cert is None
+    assert cm.guardrails_config.pii_redaction.enabled is False
+
+
+def test_pii_redaction_config_is_loaded(config_path: Path) -> None:
+    yaml = _BASE_YAML.replace(
+        "guardrails:\n  enabled: false",
+        """guardrails:
+  enabled: true
+  pii_redaction:
+    enabled: true
+    model: piibench-deberta-base
+    download: true
+    confidence_threshold: 0.7
+    replacement: "*************"
+""",
+    )
+    config_path.write_text(yaml)
+
+    cm = ConfigManager(str(config_path))
+
+    assert cm.guardrails_config.pii_redaction.enabled is True
+    assert cm.guardrails_config.pii_redaction.model == "piibench-deberta-base"
+    assert cm.guardrails_config.pii_redaction.download is True
+    assert cm.guardrails_config.pii_redaction.confidence_threshold == 0.7
+    assert cm.guardrails_config.pii_redaction.replacement == "*************"
 
 
 def test_db_ssl_config_is_resolved_from_env(config_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

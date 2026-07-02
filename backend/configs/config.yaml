@@ -75,7 +75,7 @@ storage:
 
 guardrails:
   # Set to false to disable all guardrail checks
-  enabled: false
+  enabled: true
   # Model used by DeepEval to judge metrics. Use a fast cheap model to minimise
   # latency overhead. All metrics run concurrently so cost = 3 parallel calls.
   evaluator_model: "gpt-4.1-mini"
@@ -84,6 +84,12 @@ guardrails:
     bias: true
     prompt_injection: true
     jailbreaking: true
+  pii_redaction:
+    enabled: true
+    model: "piibench-deberta-base"
+    download: true
+    confidence_threshold: 0.5
+    replacement: "*************"
 
 jobs:
   intersession:

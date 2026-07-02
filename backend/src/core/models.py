@@ -66,6 +66,17 @@ class ChatConfig:
 
 
 @dataclass
+class PIIRedactionConfig:
+    """Configuration for PII detection and masking."""
+
+    enabled: bool = True
+    model: str = "piibench-deberta-base"
+    download: bool = False
+    confidence_threshold: float = 0.5
+    replacement: str = "*************"
+
+
+@dataclass
 class GuardrailsConfig:
     """Configuration for input guardrails."""
 
@@ -75,6 +86,7 @@ class GuardrailsConfig:
     prompt_injection: bool = True
     jailbreaking: bool = True
     evaluator_model: str = "gpt-4o-mini"  # model used by DeepEval metrics — use a fast cheap model
+    pii_redaction: PIIRedactionConfig = field(default_factory=PIIRedactionConfig)
 
 
 @dataclass

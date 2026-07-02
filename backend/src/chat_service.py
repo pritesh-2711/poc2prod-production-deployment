@@ -5,7 +5,7 @@ from typing import List, Optional
 from .core.exceptions import ChatServiceError, InputBlockedError
 from .core.logging import LoggingManager
 from .core.models import ChatConfig, ChatRecord, LLMConfig
-from .guardrails import InputGuard
+from .guardrails import BasePIIRedactor, InputGuard, NoOpPIIRedactor
 from .providers import LLMProviderFactory, BaseLLMProvider
 
 logger = LoggingManager.get_logger(__name__)
@@ -41,6 +41,7 @@ class ChatService:
         llm_config: LLMConfig,
         chat_config: ChatConfig,
         input_guard: Optional[InputGuard] = None,
+        pii_redactor: Optional[BasePIIRedactor] = None,
     ):
         """Initialize the chat service.
 
@@ -55,6 +56,7 @@ class ChatService:
             self.llm_config = llm_config
             self.chat_config = chat_config
             self.input_guard = input_guard
+            self.pii_redactor = pii_redactor or NoOpPIIRedactor()
             self.llm_provider = self._initialize_provider()
             logger.info("ChatService initialized successfully")
 
@@ -125,9 +127,11 @@ class ChatService:
                         f"Message blocked by {result.violated_guard} guard."
                     )
 
+            safe_user_message = self._redact_for_llm(user_message)
+            safe_system_prompt = self._redact_for_llm(self._build_system_prompt(history))
             response = self.llm_provider.chat(
-                user_message=user_message,
-                system_prompt=self._build_system_prompt(history),
+                user_message=safe_user_message,
+                system_prompt=safe_system_prompt,
             )
             logger.info("Successfully generated response")
             return response
@@ -171,11 +175,15 @@ class ChatService:
                         f"Message blocked by {result.violated_guard} guard."
                     )
 
-            response = await self.llm_provider.achat(
-                user_message=user_message,
-                system_prompt=self._build_system_prompt(
+            safe_user_message = self._redact_for_llm(user_message)
+            safe_system_prompt = self._redact_for_llm(
+                self._build_system_prompt(
                     short_term_history, long_term_history, rag_context, intersession_context
                 ),
+            )
+            response = await self.llm_provider.achat(
+                user_message=safe_user_message,
+                system_prompt=safe_system_prompt,
             )
             logger.info("Successfully generated async response")
             return response
@@ -257,6 +265,12 @@ class ChatService:
 
         return "".join(parts)
 
+    def _redact_for_llm(self, text: str) -> str:
+        result = self.pii_redactor.redact(text)
+        if result.changed:
+            logger.info("PII redacted before LLM provider call")
+        return result.text
+
     async def stream_response_async(
         self,
         user_message: str,
@@ -277,12 +291,15 @@ class ChatService:
                     f"Message blocked by {result.violated_guard} guard."
                 )
 
-        system_prompt = self._build_system_prompt(
-            short_term_history, long_term_history, rag_context, intersession_context
+        safe_user_message = self._redact_for_llm(user_message)
+        safe_system_prompt = self._redact_for_llm(
+            self._build_system_prompt(
+                short_term_history, long_term_history, rag_context, intersession_context
+            )
         )
         async for chunk in self.llm_provider.astream_chat(
-            user_message=user_message,
-            system_prompt=system_prompt,
+            user_message=safe_user_message,
+            system_prompt=safe_system_prompt,
         ):
             yield chunk
 

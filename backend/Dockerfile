@@ -2,6 +2,7 @@
 FROM python:3.12-slim AS builder
 
 WORKDIR /app
+ENV HF_HOME=/app/.cache/huggingface
 
 # Build-time system deps (compilers + headers for psycopg2, python-magic, etc.)
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,6 +25,7 @@ RUN pip install --no-cache-dir --prefix=/install --timeout 120 --retries 5 --for
 FROM python:3.12-slim
 
 WORKDIR /app
+ENV HF_HOME=/app/.cache/huggingface
 
 # Runtime system deps — mirrors what was needed on the dev machine for
 # Docling, Tesseract OCR, Unstructured, LibreOffice, and friends.
@@ -58,9 +60,11 @@ COPY --from=builder /install /usr/local
 # Copy application code
 COPY . .
 
-# Pre-download RapidOCR model weights as root so they're baked into the image.
+# Pre-download model weights as root so they're baked into the image.
 # appuser has no write access to site-packages; downloading at runtime would fail.
-RUN python -c "from rapidocr import RapidOCR; RapidOCR()" 2>/dev/null || true
+RUN mkdir -p "$HF_HOME" \
+    && (python -c "from rapidocr import RapidOCR; RapidOCR()" 2>/dev/null || true) \
+    && anonypii download piibench-deberta-base
 
 # Non-root user for security
 RUN useradd -m -u 1000 appuser \

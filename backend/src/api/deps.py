@@ -26,6 +26,7 @@ from ..core.models import UserRecord
 from ..databases.pipeline import IngestionPipeline
 from ..databases.retrieval import PgVectorRetrievalRepository
 from ..embedding.base import BaseEmbedder
+from ..guardrails import BasePIIRedactor
 from ..memory.repository import AuthenticationError, MemoryRepository, MemoryRepositoryError
 from ..orchestrators import RAGOrchestrator
 
@@ -64,6 +65,11 @@ def get_orchestrator(request: Request) -> RAGOrchestrator:
 def get_pending_clarifications(request: Request) -> dict[str, str]:
     """Return the in-process pending-clarifications mapping (session_id → thread_id)."""
     return request.app.state.pending_clarifications
+
+
+def get_pii_redactor(request: Request) -> BasePIIRedactor:
+    """Return the PII redactor singleton."""
+    return request.app.state.pii_redactor
 
 
 def get_scheduler(request: Request) -> AsyncIOScheduler | None:

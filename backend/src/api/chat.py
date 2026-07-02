@@ -28,6 +28,7 @@ from ..core.exceptions import InputBlockedError
 from ..orchestrators.mermaid_utils import fix_mermaid_in_text
 from ..core.models import UserRecord
 from ..embedding.base import BaseEmbedder
+from ..guardrails import BasePIIRedactor
 from ..memory.repository import MemoryRepository, MemoryRepositoryError
 from ..orchestrators import RAGOrchestrator
 from ..orchestrators.state import RAGState
@@ -36,6 +37,7 @@ from .deps import (
     get_embedder,
     get_orchestrator,
     get_pending_clarifications,
+    get_pii_redactor,
     get_repo,
 )
 from .schemas import ChatMessageResponse, FeedbackRequest, FeedbackResponse, SendMessageRequest, SendMessageResponse
@@ -58,6 +60,20 @@ def _to_msg_response(record) -> ChatMessageResponse:
         created_at=record.created_at,
         charts=getattr(record, "charts", []) or [],
     )
+
+
+def _redact_text(text: str, pii_redactor: BasePIIRedactor, label: str) -> str:
+    result = pii_redactor.redact(text)
+    if result.changed:
+        logger.info("[chat] %s PII redacted", label)
+    return result.text
+
+
+def _redact_user_message(message: str, pii_redactor: BasePIIRedactor) -> str:
+    result = pii_redactor.redact(message)
+    if result.changed:
+        logger.info("[chat] user message PII redacted before persistence/LLM")
+    return result.text
 
 
 @router.get(
@@ -90,6 +106,7 @@ async def send_message(
     embedder: Annotated[BaseEmbedder, Depends(get_embedder)],
     orchestrator: Annotated[RAGOrchestrator, Depends(get_orchestrator)],
     pending_clarifications: Annotated[dict, Depends(get_pending_clarifications)],
+    pii_redactor: Annotated[BasePIIRedactor, Depends(get_pii_redactor)],
 ):
     """Persist the user message, run the RAG orchestrator, persist reply.
 
@@ -99,12 +116,13 @@ Handles workflow and agent turns, plus deep-workflow clarification resumes.
     user_id_str = str(current_user.user_id)
 
     try:
+        safe_message = _redact_user_message(body.message, pii_redactor)
         # ── 1. Embed query + persist user message ────────────────────────────
-        query_vec = embedder.embed_query(body.message)
+        query_vec = embedder.embed_query(safe_message)
         user_record = repo.add_message(
             session_id=session_id,
             sender="user",
-            message=body.message,
+            message=safe_message,
             embedding=query_vec,
         )
         user_chat_id_str = str(user_record.chat_id)
@@ -112,14 +130,14 @@ Handles workflow and agent turns, plus deep-workflow clarification resumes.
         # ── 2. Determine whether to resume or start fresh ────────────────────
         pending_thread_id = pending_clarifications.get(session_id_str)
 
-        if pending_thread_id and orchestrator.is_interrupted(pending_thread_id):
+        if pending_thread_id and await orchestrator.ais_interrupted(pending_thread_id):
             # Resume the paused deep-mode graph with the user's clarification
             logger.info(
                 f"[chat] session={session_id} | resuming clarification thread={pending_thread_id}"
             )
             result: RAGState = await orchestrator.aresume(
                 thread_id=pending_thread_id,
-                user_clarification=body.message,
+                user_clarification=safe_message,
             )
             # Remove from pending — thread is now resolved
             pending_clarifications.pop(session_id_str, None)
@@ -128,7 +146,7 @@ Handles workflow and agent turns, plus deep-workflow clarification resumes.
             # Start a fresh graph run with a new thread_id per turn
             thread_id = user_chat_id_str
             initial_state: RAGState = {
-                "original_query": body.message,
+                "original_query": safe_message,
                 "query_embedding": query_vec,
                 "category": body.category,
                 "variant": body.variant,
@@ -146,11 +164,16 @@ Handles workflow and agent turns, plus deep-workflow clarification resumes.
             result = await orchestrator.ainvoke(initial_state, thread_id=thread_id)
 
             # Check if the graph paused for clarification (deep mode only)
-            if orchestrator.is_interrupted(thread_id):
+            if await orchestrator.ais_interrupted(thread_id):
                 clarification_q = (
                     result.get("clarification_question")
-                    or orchestrator.get_clarification_question(thread_id)
+                    or await orchestrator.aget_clarification_question(thread_id)
                     or "Could you clarify your question?"
+                )
+                clarification_q = _redact_text(
+                    clarification_q,
+                    pii_redactor,
+                    "clarification question",
                 )
                 logger.info(
                     f"[chat] session={session_id} | graph interrupted, asking: {clarification_q!r}"
@@ -177,6 +200,7 @@ Handles workflow and agent turns, plus deep-workflow clarification resumes.
         )
         charts: list[str] = result.get("charts") or []
         assistant_text = await fix_mermaid_in_text(assistant_text, orchestrator.chat_service)
+        assistant_text = _redact_text(assistant_text, pii_redactor, "assistant response")
         assistant_vec = embedder.embed_one(assistant_text)
         assistant_record = repo.add_message(
             session_id=session_id,
@@ -258,6 +282,7 @@ async def stream_message(
     embedder: Annotated[BaseEmbedder, Depends(get_embedder)],
     orchestrator: Annotated[RAGOrchestrator, Depends(get_orchestrator)],
     pending_clarifications: Annotated[dict, Depends(get_pending_clarifications)],
+    pii_redactor: Annotated[BasePIIRedactor, Depends(get_pii_redactor)],
 ):
     """Same RAG cycle as send_message, but streams the LLM reply token-by-token via SSE.
 
@@ -275,13 +300,14 @@ async def stream_message(
         user_id_str = str(current_user.user_id)
 
         try:
+            safe_message = _redact_user_message(body.message, pii_redactor)
             # ── 1. Embed + persist user message ──────────────────────────────
-            query_vec = embedder.embed_query(body.message)
+            query_vec = embedder.embed_query(safe_message)
             try:
                 user_record = repo.add_message(
                     session_id=session_id,
                     sender="user",
-                    message=body.message,
+                    message=safe_message,
                     embedding=query_vec,
                 )
             except MemoryRepositoryError as e:
@@ -298,11 +324,11 @@ async def stream_message(
             result: Optional[RAGState] = None
 
             # ── 2. Resume interrupted thread (deep mode clarification) ────────
-            if pending_thread_id and orchestrator.is_interrupted(pending_thread_id):
+            if pending_thread_id and await orchestrator.ais_interrupted(pending_thread_id):
                 yield _sse({"type": "status", "content": "Resuming after clarification…"})
                 result = await orchestrator.aresume(
                     thread_id=pending_thread_id,
-                    user_clarification=body.message,
+                    user_clarification=safe_message,
                 )
                 pending_clarifications.pop(session_id_str, None)
 
@@ -310,7 +336,7 @@ async def stream_message(
                 # ── 3. Fresh graph run — stream per-node status events ────────
                 thread_id = user_chat_id_str
                 initial_state: RAGState = {
-                    "original_query": body.message,
+                    "original_query": safe_message,
                     "query_embedding": query_vec,
                     "category": body.category,
                     "variant": body.variant,
@@ -351,14 +377,19 @@ async def stream_message(
                         last_status = status_msg
 
                 # ── 4. Retrieve final state after stream ──────────────────────
-                graph_state = orchestrator.get_graph_state(thread_id)
+                graph_state = await orchestrator.aget_graph_state(thread_id)
 
                 if graph_state and graph_state.next:
                     # Graph is interrupted — deep mode awaiting clarification
                     clarification_q = (
                         graph_state.values.get("clarification_question")
-                        or orchestrator.get_clarification_question(thread_id)
+                        or await orchestrator.aget_clarification_question(thread_id)
                         or "Could you clarify your question?"
+                    )
+                    clarification_q = _redact_text(
+                        clarification_q,
+                        pii_redactor,
+                        "clarification question",
                     )
                     pending_clarifications[session_id_str] = thread_id
 
@@ -386,6 +417,7 @@ async def stream_message(
 
             # Validate mermaid blocks; attempt LLM correction for any invalid ones
             assistant_text = await fix_mermaid_in_text(assistant_text, orchestrator.chat_service)
+            assistant_text = _redact_text(assistant_text, pii_redactor, "assistant response")
 
             for word in assistant_text.split(" "):
                 yield _sse({"type": "token", "content": word + " "})
@@ -461,6 +493,7 @@ def submit_feedback(
     body: FeedbackRequest,
     current_user: Annotated[UserRecord, Depends(get_current_user)],
     repo: Annotated[MemoryRepository, Depends(get_repo)],
+    pii_redactor: Annotated[BasePIIRedactor, Depends(get_pii_redactor)],
 ):
     """Record thumbs-up / thumbs-down feedback on an assistant message.
 
@@ -469,12 +502,17 @@ def submit_feedback(
     incrementing their RLHF quality score counters.
     """
     try:
+        comment = (
+            _redact_text(body.comment, pii_redactor, "feedback comment")
+            if body.comment
+            else body.comment
+        )
         feedback_id = repo.save_feedback(
             chat_id=chat_id,
             session_id=session_id,
             user_id=current_user.user_id,
             rating=body.rating,
-            comment=body.comment,
+            comment=comment,
         )
         # Best-effort chunk attribution — log but don't fail the request
         try:

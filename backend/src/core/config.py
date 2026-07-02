@@ -9,7 +9,8 @@ import yaml
 from .exceptions import ConfigurationError
 from .models import (
     ChatConfig, ChunkScoringConfig, DBConfig, EmbeddingConfig, GuardrailsConfig,
-    IntersessionConfig, JobsConfig, LLMConfig, MCPConfig, RerankerConfig, StorageConfig,
+    IntersessionConfig, JobsConfig, LLMConfig, MCPConfig, PIIRedactionConfig,
+    RerankerConfig, StorageConfig,
 )
 
 
@@ -200,14 +201,23 @@ class ConfigManager:
             GuardrailsConfig object with input guard settings.
         """
         gr = self.config.get("guardrails", {})
+        enabled = gr.get("enabled", True)
         input_cfg = gr.get("input", {})
+        pii_cfg = gr.get("pii_redaction", {})
         return GuardrailsConfig(
-            enabled=gr.get("enabled", True),
+            enabled=enabled,
             toxicity=input_cfg.get("toxicity", True),
             bias=input_cfg.get("bias", True),
             prompt_injection=input_cfg.get("prompt_injection", True),
             jailbreaking=input_cfg.get("jailbreaking", True),
             evaluator_model=gr.get("evaluator_model", "gpt-4o-mini"),
+            pii_redaction=PIIRedactionConfig(
+                enabled=enabled and pii_cfg.get("enabled", True),
+                model=pii_cfg.get("model", "piibench-deberta-base"),
+                download=pii_cfg.get("download", False),
+                confidence_threshold=float(pii_cfg.get("confidence_threshold", 0.5)),
+                replacement=pii_cfg.get("replacement", "*************"),
+            ),
         )
 
     def _build_reranker_config(self) -> RerankerConfig:
