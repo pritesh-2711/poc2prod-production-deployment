@@ -55,7 +55,7 @@ jobs:
 
       - name: Configure kubeconfig
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == 'true' }}
-        run: aws eks update-kubeconfig --region "$AWS_REGION" --name poc2prod-prod
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name poc2prod-prod-eks
 
       - name: Deploy backend
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == 'true' }}

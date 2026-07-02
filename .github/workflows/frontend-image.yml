@@ -25,7 +25,7 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  CLUSTER_NAME: poc2prod-prod
+  CLUSTER_NAME: poc2prod-prod-eks
   NAMESPACE: poc2prod
   ECR_REPOSITORY: poc2prod-prod-frontend
   VITE_API_BASE_URL: https://api.poc2prod.pritesh-jha.in

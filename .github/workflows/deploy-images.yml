@@ -22,7 +22,7 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  CLUSTER_NAME: poc2prod-prod
+  CLUSTER_NAME: poc2prod-prod-eks
   NAMESPACE: poc2prod
   BACKEND_REPOSITORY: poc2prod-prod-backend
   FRONTEND_REPOSITORY: poc2prod-prod-frontend
