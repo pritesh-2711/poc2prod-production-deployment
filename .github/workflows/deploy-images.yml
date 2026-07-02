@@ -1,0 +1,72 @@
+name: Deploy Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      backend_tag:
+        description: Backend image tag to deploy, usually a commit SHA. Leave empty to skip.
+        required: false
+        default: ""
+      frontend_tag:
+        description: Frontend image tag to deploy, usually a commit SHA. Leave empty to skip.
+        required: false
+        default: ""
+      mcp_tag:
+        description: MCP image tag to deploy, usually a commit SHA. Leave empty to skip.
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: ap-south-1
+  CLUSTER_NAME: poc2prod-prod
+  NAMESPACE: poc2prod
+  BACKEND_REPOSITORY: poc2prod-prod-backend
+  FRONTEND_REPOSITORY: poc2prod-prod-frontend
+  MCP_REPOSITORY: poc2prod-prod-mcp
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_GITHUB_ACTIONS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Configure kubeconfig
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
+
+      - name: Deploy backend
+        if: ${{ inputs.backend_tag != '' }}
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          kubectl set image deployment/poc2prod-backend backend="$REGISTRY/$BACKEND_REPOSITORY:${{ inputs.backend_tag }}" -n "$NAMESPACE"
+          kubectl rollout status deployment/poc2prod-backend -n "$NAMESPACE" --timeout=300s
+
+      - name: Deploy frontend
+        if: ${{ inputs.frontend_tag != '' }}
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          kubectl set image deployment/poc2prod-frontend frontend="$REGISTRY/$FRONTEND_REPOSITORY:${{ inputs.frontend_tag }}" -n "$NAMESPACE"
+          kubectl rollout status deployment/poc2prod-frontend -n "$NAMESPACE" --timeout=300s
+
+      - name: Deploy MCP
+        if: ${{ inputs.mcp_tag != '' }}
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          kubectl set image deployment/poc2prod-mcp mcp="$REGISTRY/$MCP_REPOSITORY:${{ inputs.mcp_tag }}" -n "$NAMESPACE"
+          kubectl rollout status deployment/poc2prod-mcp -n "$NAMESPACE" --timeout=300s
+
+      - name: Smoke test
+        run: |
+          curl --fail --silent --show-error --max-time 30 https://api.poc2prod.pritesh-jha.in/health

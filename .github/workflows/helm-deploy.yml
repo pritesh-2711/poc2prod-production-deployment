@@ -1,4 +1,4 @@
-name: Helm Deploy
+name: Legacy Helm Deploy
 
 on:
   workflow_dispatch:
@@ -19,6 +19,7 @@ env:
 
 jobs:
   deploy:
+    if: false
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,4 +45,3 @@ jobs:
 
       - name: Wait for rollout
         run: kubectl rollout status "deploy/$RELEASE_NAME-api" -n "$NAMESPACE"
-

@@ -52,3 +52,50 @@ variable "tags" {
   default     = {}
 }
 
+variable "waf_rate_limit_per_5_min" {
+  type        = number
+  description = "Maximum requests per IP over a rolling five-minute window before WAF blocks the source."
+  default     = 2000
+}
+
+variable "backend_alb_full_name" {
+  type        = string
+  description = "CloudWatch LoadBalancer dimension for the backend ALB, for example app/name/id."
+  default     = ""
+}
+
+variable "frontend_alb_full_name" {
+  type        = string
+  description = "CloudWatch LoadBalancer dimension for the frontend ALB, for example app/name/id."
+  default     = ""
+}
+
+variable "observability_alert_email" {
+  type        = string
+  description = "Email address for CloudWatch alarm and budget notifications. Leave empty to skip email subscriptions."
+  default     = ""
+}
+
+variable "monthly_budget_limit_usd" {
+  type        = string
+  description = "Monthly AWS budget limit in USD."
+  default     = "50"
+}
+
+variable "log_retention_days" {
+  type        = number
+  description = "CloudWatch log retention in days for EKS Container Insights log groups."
+  default     = 14
+}
+
+variable "github_repository" {
+  type        = string
+  description = "GitHub repository allowed to assume the Actions deployment role."
+  default     = "pritesh-2711/poc2prod-production-deployment"
+}
+
+variable "allow_github_main_only" {
+  type        = bool
+  description = "Restrict GitHub OIDC role assumption to the main branch."
+  default     = true
+}

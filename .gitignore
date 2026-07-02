@@ -4,4 +4,20 @@
 terraform/environments/*/.terraform.lock.hcl
 terraform/environments/*/backend.hcl
 terraform/environments/*/tfplan
+terraform/environments/*/tfplan-*
 .tools/
+
+# Local Kubernetes manifests and secret scratch files used during debugging.
+*secret*.yaml
+test-*.yaml
+*-serviceaccount-test.yaml
+/backend-*.yaml
+/frontend-*.yaml
+/cluster-secret-store.yaml
+
+# Local env files must never be committed.
+.env
+*.env
+backend/.env
+mcp/.env
+frontend/.env

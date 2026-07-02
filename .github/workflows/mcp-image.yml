@@ -1,4 +1,4 @@
-name: Backend Image
+name: MCP Image
 
 on:
   workflow_dispatch:
@@ -15,8 +15,8 @@ on:
     branches:
       - main
     paths:
-      - backend/**
-      - .github/workflows/backend-image.yml
+      - mcp/**
+      - .github/workflows/mcp-image.yml
       - .github/workflows/deploy-images.yml
 
 permissions:
@@ -25,7 +25,9 @@ permissions:
 
 env:
   AWS_REGION: ap-south-1
-  ECR_REPOSITORY: poc2prod-prod-backend
+  CLUSTER_NAME: poc2prod-prod
+  NAMESPACE: poc2prod
+  ECR_REPOSITORY: poc2prod-prod-mcp
 
 jobs:
   build:
@@ -41,7 +43,7 @@ jobs:
       - uses: aws-actions/amazon-ecr-login@v2
         id: ecr
 
-      - name: Build and push backend image
+      - name: Build and push MCP image
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
@@ -49,19 +51,19 @@ jobs:
           docker build \
             -t "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" \
             -t "$REGISTRY/$ECR_REPOSITORY:latest" \
-            backend
+            mcp
           docker push "$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG"
           docker push "$REGISTRY/$ECR_REPOSITORY:latest"
 
       - name: Configure kubeconfig
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == 'true' }}
-        run: aws eks update-kubeconfig --region "$AWS_REGION" --name poc2prod-prod
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$CLUSTER_NAME"
 
-      - name: Deploy backend
+      - name: Deploy MCP
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy == 'true' }}
         env:
           REGISTRY: ${{ steps.ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          kubectl set image deployment/poc2prod-backend backend="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -n poc2prod
-          kubectl rollout status deployment/poc2prod-backend -n poc2prod --timeout=300s
+          kubectl set image deployment/poc2prod-mcp mcp="$REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG" -n "$NAMESPACE"
+          kubectl rollout status deployment/poc2prod-mcp -n "$NAMESPACE" --timeout=300s
