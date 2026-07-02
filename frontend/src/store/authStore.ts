@@ -7,6 +7,7 @@ interface AuthState {
   token: string | null
   loading: boolean
   error: string | null
+  notice: string | null
   signin: (email: string, password: string) => Promise<void>
   signup: (name: string, email: string, password: string) => Promise<void>
   signout: () => Promise<void>
@@ -19,11 +20,12 @@ export const useAuthStore = create<AuthState>((set) => ({
   token: localStorage.getItem('access_token'),
   loading: false,
   error: null,
+  notice: null,
 
-  clearError: () => set({ error: null }),
+  clearError: () => set({ error: null, notice: null }),
 
   signin: async (email, password) => {
-    set({ loading: true, error: null })
+    set({ loading: true, error: null, notice: null })
     try {
       const tokenRes = await authApi.signin({ email, password })
       localStorage.setItem('access_token', tokenRes.access_token)
@@ -35,13 +37,13 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   signup: async (name, email, password) => {
-    set({ loading: true, error: null })
+    set({ loading: true, error: null, notice: null })
     try {
-      await authApi.signup({ name, email, password })
-      const tokenRes = await authApi.signin({ email, password })
-      localStorage.setItem('access_token', tokenRes.access_token)
-      const user = await authApi.me()
-      set({ token: tokenRes.access_token, user, loading: false })
+      const res = await authApi.signup({ name, email, password })
+      set({
+        loading: false,
+        notice: res.message || 'Registration successful. Your account is awaiting admin approval.',
+      })
     } catch (e) {
       set({ loading: false, error: (e as Error).message })
     }

@@ -11,7 +11,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
-  const { signin, signup, loading, error, clearError } = useAuthStore()
+  const { signin, signup, loading, error, notice, clearError } = useAuthStore()
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -21,7 +21,7 @@ export default function AuthPage() {
     } else {
       await signup(name, email, password)
     }
-    if (!useAuthStore.getState().error) {
+    if (mode === 'signin' && !useAuthStore.getState().error) {
       navigate('/')
     }
   }
@@ -103,6 +103,7 @@ export default function AuthPage() {
           </div>
 
           {error && <p className={styles.error}>{error}</p>}
+          {notice && <p className={styles.notice}>{notice}</p>}
 
           <button className={styles.submit} type="submit" disabled={loading}>
             {loading ? (

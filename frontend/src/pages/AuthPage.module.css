@@ -129,6 +129,15 @@
   padding: 8px 12px;
 }
 
+.notice {
+  font-size: 13px;
+  color: var(--text-primary);
+  background: rgba(45, 212, 191, 0.12);
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+}
+
 .submit {
   background: var(--accent);
   color: #fff;

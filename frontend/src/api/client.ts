@@ -22,7 +22,7 @@ import type {
   UserResponse,
 } from '../types/api'
 
-const BASE_URL = '/api'
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || '/api').replace(/\/$/, '')
 
 class ApiError extends Error {
   constructor(
@@ -76,7 +76,7 @@ async function request<T>(
 // ---------------------------------------------------------------------------
 
 export const authApi = {
-  signup(body: SignUpRequest): Promise<UserResponse> {
+  signup(body: SignUpRequest): Promise<{ message: string; status: string }> {
     return request('/auth/signup', {
       method: 'POST',
       body: JSON.stringify(body),
