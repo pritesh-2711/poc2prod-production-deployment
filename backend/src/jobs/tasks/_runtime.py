@@ -34,15 +34,17 @@ def build_config():
 
 def build_chat_service(config):
     from ...chat_service import ChatService
-    from ...guardrails import InputGuard
+    from ...guardrails import InputGuard, build_pii_redactor
 
     input_guard = None
     if config.guardrails_config.enabled:
         input_guard = InputGuard(config.guardrails_config)
+    pii_redactor = build_pii_redactor(config.guardrails_config.pii_redaction)
     return ChatService(
         llm_config=config.llm_config,
         chat_config=config.chat_config,
         input_guard=input_guard,
+        pii_redactor=pii_redactor,
     )
 
 

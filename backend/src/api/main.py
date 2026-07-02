@@ -5,6 +5,7 @@ import logging.config
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import quote, urlencode
 
 import yaml
 from fastapi import FastAPI
@@ -12,11 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from ..chat_service import ChatService
 from ..core.config import ConfigManager
+from ..databases.connection import supports_startup_options
 from ..databases.admin import AdminRepository
 from ..databases.intersession import IntersessionRepository
 from ..databases.retrieval import PgVectorRetrievalRepository
 from ..embedding import LocalEmbedder, OllamaEmbedder, OpenAIEmbedder
-from ..guardrails import InputGuard
+from ..guardrails import InputGuard, build_pii_redactor
 from ..jobs.scheduler import create_scheduler
 from ..mcp_client import MCPToolLoader
 from ..memory.repository import MemoryRepository
@@ -35,6 +37,27 @@ from .upload import router as upload_router
 ENABLE_IN_PROCESS_SCHEDULER = (
     os.getenv("ENABLE_IN_PROCESS_SCHEDULER", "false").lower() == "true"
 )
+os.environ.setdefault("LANGGRAPH_STRICT_MSGPACK", "true")
+
+
+def _postgres_checkpointer_conninfo(config: ConfigManager) -> str:
+    """Build a psycopg connection URI for LangGraph checkpoint tables."""
+    db = config.db_config
+    username = quote(db.user, safe="")
+    password = quote(db.password, safe="")
+    database = quote(db.database, safe="")
+    query: dict[str, str] = {
+        "sslmode": db.ssl_mode or "disable",
+    }
+    if supports_startup_options(db):
+        query["options"] = "-c search_path=poc2prod,public"
+    if db.ssl_root_cert:
+        query["sslrootcert"] = str(db.ssl_root_cert)
+
+    return (
+        f"postgresql://{username}:{password}@{db.host}:{db.port}/{database}"
+        f"?{urlencode(query, quote_via=quote)}"
+    )
 
 
 def _cors_origins() -> list[str]:
@@ -72,11 +95,13 @@ async def lifespan(app: FastAPI):
     input_guard = None
     if config.guardrails_config.enabled:
         input_guard = InputGuard(config.guardrails_config)
+    pii_redactor = build_pii_redactor(config.guardrails_config.pii_redaction)
 
     chat_service = ChatService(
         llm_config=config.llm_config,
         chat_config=config.chat_config,
         input_guard=input_guard,
+        pii_redactor=pii_redactor,
     )
 
     # Build embedder from config — loaded once, shared across all requests.
@@ -94,29 +119,48 @@ async def lifespan(app: FastAPI):
 
     # ── Storage + distributed state backends ─────────────────────────────────
     # local deployment  → local disk, in-process dict, MemorySaver checkpointer
-    # cloud/aws         → S3, Redis dict wrapper, AsyncRedisSaver checkpointer
+    # cloud/aws         → S3, Redis clarification store, Postgres checkpointer
 
     file_loader: BaseFileLoader
     checkpointer = None  # None → RAGOrchestrator falls back to MemorySaver
 
     if st_cfg.deployment == "cloud" and st_cfg.cloud_provider == "aws":
         import redis
-        from langgraph.checkpoint.redis.aio import AsyncRedisSaver
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg.rows import dict_row
+        from psycopg_pool import AsyncConnectionPool
 
         file_loader = S3FileLoader(
             bucket=st_cfg.aws_s3_bucket,
             region=st_cfg.aws_s3_region,
         )
 
-        redis_client = redis.Redis.from_url(st_cfg.aws_redis_url, decode_responses=False)
+        redis_client = redis.Redis.from_url(
+            st_cfg.aws_redis_url,
+            decode_responses=False,
+        )
         pending_clarifications = RedisClarificationStore(redis_client)
 
-        checkpointer = AsyncRedisSaver.from_conn_string(st_cfg.aws_redis_url)
-        await checkpointer.asetup()
+        checkpointer_pool = AsyncConnectionPool(
+            conninfo=_postgres_checkpointer_conninfo(config),
+            min_size=int(os.getenv("LANGGRAPH_POSTGRES_POOL_MIN_SIZE", "1")),
+            max_size=int(os.getenv("LANGGRAPH_POSTGRES_POOL_MAX_SIZE", "4")),
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+            },
+            open=False,
+        )
+        await checkpointer_pool.open()
+        checkpointer = AsyncPostgresSaver(checkpointer_pool)
+        await checkpointer.setup()
+
+        app.state.checkpointer_pool = checkpointer_pool
 
         logger.info(
             f"Cloud storage: S3 bucket={st_cfg.aws_s3_bucket}, "
-            f"Redis checkpointer + clarification store wired."
+            f"Postgres checkpointer + Redis clarification store wired."
         )
     else:
         file_loader = LocalFileLoader()
@@ -173,6 +217,7 @@ async def lifespan(app: FastAPI):
 
     app.state.config = config
     app.state.chat_service = chat_service
+    app.state.pii_redactor = pii_redactor
     app.state.embedder = embedder
     app.state.orchestrator = orchestrator
     app.state.file_loader = file_loader
@@ -192,11 +237,19 @@ async def lifespan(app: FastAPI):
         f"MCP={config.mcp_config.transport if config.mcp_config.enabled else 'disabled'}, "
         f"IntersessionMemory={'enabled' if jobs_cfg.intersession.enabled else 'disabled'}"
     )
-    yield
-    if scheduler and scheduler.running:
-        scheduler.shutdown(wait=False)
-    await mcp_tool_loader.disconnect()
-    logger.info("Application shutdown.")
+    try:
+        yield
+    finally:
+        if scheduler and scheduler.running:
+            scheduler.shutdown(wait=False)
+
+        await mcp_tool_loader.disconnect()
+
+        checkpointer_pool = getattr(app.state, "checkpointer_pool", None)
+        if checkpointer_pool is not None:
+            await checkpointer_pool.close()
+
+        logger.info("Application shutdown.")
 
 
 app = FastAPI(
